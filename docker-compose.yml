@@ -24,6 +24,7 @@ services:
             - sail
         depends_on:
             - mysql
+            - redis  # Add Redis as a dependency
     mysql:
         image: 'mysql/mysql-server:8.0'
         ports:
@@ -48,6 +49,12 @@ services:
                 - '-p${DB_PASSWORD}'
             retries: 3
             timeout: 5s
+    redis:  # Define the Redis service
+        image: 'redis:alpine'  # Use the official Redis Docker image
+        ports:
+            - '6379:6379'  # Expose Redis port
+        networks:
+            - sail
 networks:
     sail:
         driver: bridge
