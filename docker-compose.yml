@@ -1,63 +1,176 @@
-version: '3'
-services:
-    laravel.test:
-        build:
-            context: ./vendor/laravel/sail/runtimes/8.2
-            dockerfile: Dockerfile
-            args:
-                WWWGROUP: '${WWWGROUP}'
-        image: sail-8.2/app
-        extra_hosts:
-            - 'host.docker.internal:host-gateway'
-        ports:
-            - '${APP_PORT:-80}:80'
-            - '${VITE_PORT:-5173}:${VITE_PORT:-5173}'
-        environment:
-            WWWUSER: '${WWWUSER}'
-            LARAVEL_SAIL: 1
-            XDEBUG_MODE: '${SAIL_XDEBUG_MODE:-off}'
-            XDEBUG_CONFIG: '${SAIL_XDEBUG_CONFIG:-client_host=host.docker.internal}'
-            IGNITION_LOCAL_SITES_PATH: '${PWD}'
-        volumes:
-            - '.:/var/www/html'
-        networks:
-            - sail
-        depends_on:
-            - mysql
-            - redis  # Add Redis as a dependency
-    mysql:
-        image: 'mysql/mysql-server:8.0'
-        ports:
-            - '${FORWARD_DB_PORT:-3306}:3306'
-        environment:
-            MYSQL_ROOT_PASSWORD: '${DB_PASSWORD}'
-            MYSQL_ROOT_HOST: '%'
-            MYSQL_DATABASE: '${DB_DATABASE}'
-            MYSQL_USER: '${DB_USERNAME}'
-            MYSQL_PASSWORD: '${DB_PASSWORD}'
-            MYSQL_ALLOW_EMPTY_PASSWORD: 1
-        volumes:
-            - 'sail-mysql:/var/lib/mysql'
-            - './vendor/laravel/sail/database/mysql/create-testing-database.sh:/docker-entrypoint-initdb.d/10-create-testing-database.sh'
-        networks:
-            - sail
-        healthcheck:
-            test:
-                - CMD
-                - mysqladmin
-                - ping
-                - '-p${DB_PASSWORD}'
-            retries: 3
-            timeout: 5s
-    redis:  # Define the Redis service
-        image: 'redis:alpine'  # Use the official Redis Docker image
-        ports:
-            - '6379:6379'  # Expose Redis port
-        networks:
-            - sail
+version: "3.9"
+
 networks:
-    sail:
+    network-y_duck:
+        name: network-y_duck
         driver: bridge
+
 volumes:
-    sail-mysql:
+    volume-nginx:
+        name: volume-y_duck-nginx
         driver: local
+    volume-php:
+        name: volume-y_duck-php
+        driver: local
+    volume-db:
+        name: volume-y_duck-db
+        driver: local
+    volume-redis:
+        name: volume-y_duck-redis
+        driver: local
+    volume-phpmyadmin:
+        name: volume-y_duck-phpmyadmin
+        driver: local
+
+services:
+    composer-update:
+        container_name: y_duck-composer-update
+        image: composer-php
+        build:
+            dockerfile: ./server/Dockerfile-php
+            context: .
+        user: root:root
+        working_dir: /var/www/html
+        networks:
+            - network-y_duck
+        command:
+            - composer
+            - update
+        volumes:
+            - .:/var/www/html
+    nginx:
+        restart: unless-stopped
+        container_name: y_duck-nginx
+        build:
+            dockerfile: ./server/Dockerfile-nginx
+            context: .
+        image: y_duck-nginx
+        user: root:root
+        working_dir: /var/www/html
+        ports:
+            - "80:80"
+            - "443:443"
+        networks:
+            - network-y_duck
+        depends_on:
+            - database
+            - redis
+            - php
+        volumes:
+            - ./server/config/nginx/etc:/etc/nginx
+            #  - ./config/nginx/etc/logs:/etc/nginx/logs
+            - volume-nginx:/etc/nginx/logs
+            - ./public:/var/www/html/public
+            - ./resources:/var/www/html/resources
+            - ./storage/app:/var/www/html/storage/app
+    database:
+        restart: unless-stopped
+        container_name: y_duck-db
+        image: mysql:8.0.37
+        user: root:root
+        command:
+            --default-authentication-plugin=mysql_native_password
+            --log-bin=off
+        ports:
+            - "8082:3306"
+        environment:
+            MYSQL_ROOT_PASSWORD: "DF%£r234ty7S4G7^&*WgfE89i$5oR"
+            MYSQL_DATABASE: test
+            MYSQL_USER: test
+            MYSQL_PASSWORD: "BOr!~@2e72£$IhE6C)^x6J0I&oi347TtFp"
+        networks:
+            - network-y_duck
+        volumes:
+            - volume-db:/var/lib/mysql
+        #  - ./volumes/db/restore/mysql.sh:/docker-entrypoint-initdb.d/mysql.sh
+        #  - ./volumes/db/backup/:/home/
+    redis:
+        restart: unless-stopped
+        container_name: y_duck-redis
+        image: redis:latest
+        user: root:root
+        ports:
+            - "8083:6379"
+        networks:
+            - network-y_duck
+        volumes:
+            - volume-redis:/data
+            - ./server/config/redis/redis.conf:/usr/local/etc/redis/redis.conf
+    php:
+        restart: unless-stopped
+        container_name: y_duck-php
+        build:
+            dockerfile: ./server/Dockerfile-php
+            context: .
+        image: y_duck-php
+        user: root:root
+        working_dir: /var/www/html
+        networks:
+            - network-y_duck
+        volumes:
+            - ./server/config/php/php.ini:/usr/local/etc/php/conf.d/default.ini
+            - volume-php:/var/www/html/vendor
+            - .:/var/www/html
+            - ./server/volumes/php/entrypoint.sh:/entrypoint.d/entrypoint.sh
+    phpmyadmin:
+        restart: unless-stopped
+        container_name: y_duck-phpmyadmin
+        image: phpmyadmin:latest
+        user: root:root
+        ports:
+            - "8085:80"
+        environment:
+            PMA_ARBITRARY: 1
+            MYSQL_USER: root
+            MYSQL_PASSWORD: "DF%£r234ty7S4G7^&*WgfE89i$5oR"
+            MAX_EXECUTION_TIME: 120
+            MEMORY_LIMIT: 1G
+            UPLOAD_LIMIT: 50M
+#            PMA_HOST: database
+#            PMA_PORT: 8082
+#            PMA_USER: root
+#            PMA_PASSWORD: "DF%£r234ty7S4G7^&*WgfE89i$5oR"
+            PMA_VERBOSE: MySQL
+            PMA_PMADB: mysql
+        networks:
+            - network-y_duck
+        depends_on:
+            - php
+        volumes:
+            - volume-phpmyadmin:/etc/phpmyadmin
+    redis-admin:
+        restart: unless-stopped
+        container_name: y_duck-redis-admin
+        image: erikdubbelboer/phpredisadmin:latest
+        user: root:root
+        environment:
+            REDIS_1_HOST: redis
+            REDIS_1_PORT: 6379
+        ports:
+            - "8086:80"
+        depends_on:
+            - redis
+        networks:
+            - network-y_duck
+    npm:
+        container_name: y_duck-npm
+        image: y_duck-npm:latest
+        user: root:root
+        build:
+            dockerfile: ./server/Dockerfile-npm
+            context: .
+        ports:
+            - "3031:3000"
+        volumes:
+            - ./public:/home/node/project/public
+            - ./resources:/home/node/project/resources
+            - ./storage/app:/home/node/project/storage/app
+            - ./.env:/home/node/project/.env
+            - ./package.json:/home/node/project/package.json
+            - ./tsconfig.json:/home/node/project/tsconfig.json
+            - ./vite.config.js:/home/node/project/vite.config.js
+        entrypoint: [ "npm", "run", "build", "--" ] #, "--", #"--host", "0.0.0.0"
+        environment:
+            APP_ENV: production
+        networks:
+            - network-y_duck

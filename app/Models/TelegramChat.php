@@ -12,7 +12,7 @@ class TelegramChat extends TelegraphChat
     protected $fillable = [
         'chat_id',
         'name',
-        'phone', // Add the phone field here
+        'phone',
     ];
 }
 

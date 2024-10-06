@@ -31,4 +31,10 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'trello' => [
+        'api_key' => env('TRELLO_API_KEY'),
+        'access_token' => env('TRELLO_ACCESS_TOKEN'),
+    ],
+
+
 ];

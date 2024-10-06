@@ -3,14 +3,18 @@
 namespace App\Telegram;
 
 use App\Models\TelegramChat;
+use App\Models\User;
 use App\Services\Telegram\TelegramService;
+use App\Services\Trello\TrelloService;
 use DefStudio\Telegraph\Facades\Telegraph;
 use DefStudio\Telegraph\Handlers\WebhookHandler;
 use DefStudio\Telegraph\Keyboard\Button;
 use DefStudio\Telegraph\Keyboard\Keyboard;
 use DefStudio\Telegraph\Keyboard\ReplyButton;
 use DefStudio\Telegraph\Keyboard\ReplyKeyboard;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Support\Stringable;
 
 class Handler extends WebhookHandler
@@ -20,71 +24,58 @@ class Handler extends WebhookHandler
     {
         return $this->message->chat()->id();
     }
-    protected function sendMessage($chatId,$message)
-    {
-        app(TelegramService::class)->sendMessageFromRequest($chatId,$message);
-    }
+
     public function start()
     {
-//        $keyboard = ReplyKeyboard::make()
-//            ->button('Text')
-//            ->button('Send Contact')->requestContact()
-//            ->button('Send Location')->requestLocation()
-//            ->button('Create Quiz')->requestQuiz()
-//            ->button('Create Poll')->requestPoll()
-//            ->button('Start WebApp')->webApp('https://web.app.dev')
-//            ->chunk(2);
-//        Telegraph::message('Выбери какое-то действие')
-//            ->keyboard(
-//                $keyboard
-//            )->send();
-//        $keyboard = ReplyKeyboard::make()
-//            ->button('Send Contact')->requestContact()
-//            ->oneTime();
-//
-//        $message = Telegraph::message('For subscribe on notifications please provide your phone number')
-//            ->replyKeyboard($keyboard);
-        $keyboard = ReplyKeyboard::make()
-            ->button('Send Contact')->requestContact()
-            ->oneTime();
+        Log::info('Chat data: ', $this->message->toArray());
 
-        $chat = app(TelegramService::class)->findChatById($this->getChatId());
-// Create the message with the custom keyboard
-        $message = $chat->message('For subscribe on notifications please provide your phone number')
-            ->replyKeyboard($keyboard);
+        $data = $this->message->toArray();
+//        Log::info('Chat data: ', $this->toArray());
 
-        $message->send();
-// Send the message to the specified chat ID
-//        $response = Telegraph::sendToChat($this->getChatId(), $message);
 
-//        $this->sendMessage($this->getChatId(),$message);
+        // Check if 'from' and 'username' keys exist
+        $username = $data['from']['username'];
 
+        // Register or update PM in the database
+        User::firstOrCreate(
+            ['telegram_id' => $data['from']['id']],
+            [
+                'name' => $username,
+                'password' => Hash::make(Str::random(10)), // Generate and hash a random password
+            ]
+        );
+
+        // Greet the PM
+        Telegraph::message('HI ' . $username . "! Please provide your Trello email for authorization:")->send();
     }
 
-
-    public function help(): void
+    public function handleTrelloAuthorization(string $email)
     {
-        $this->sendMessage($this->getChatId(),'This is CDL notifications bot');
+        // Log the received Trello email
+        Log::info("Trello email received: " . $email);
+
+        $data = $this->message->toArray();
+        $tgId = $data['from']['id'];
+        $user = User::where('telegram_id', $tgId)->first();
+        if ($user['email'] === null) {
+            $user->update(['email' => $email]);
+        }
+
+
+        // Invite the user to Trello
+        $response = app(TrelloService::class)->inviteMember($email, $user['name']);
+
+        // Provide feedback to the user
+        if ($response['success']) {
+            // Example: Send Trello board link back to the PM
+            $boardLink = "https://trello.com/b/pBEkVwRB/yllducktest";
+            Telegraph::message('Your Trello invitation was sent successfully! Here is the link to your Trello board: ' . $boardLink)->send();
+        } else {
+            // Handle errors and inform the user
+            Telegraph::message($response['message'])->send();
+        }
     }
 
-//    public function actions(): void
-//    {
-//        Telegraph::message('Choose an action')
-//            ->keyboard(
-//                Keyboard::make()->buttons([
-////                    Button::make('Перейти на сайт')->url('https://areaweb.su'),
-////                    Button::make('Поставить лайк')->action('like'),
-//                    Button::make('Subscribe')
-//                        ->action('subscribe')
-//                        ->param('channel_name', '@areaweb'),
-//                ])
-//            )->send();
-//    }
-
-//    public function subscribe(): void
-//    {
-//        $this->reply("Спасибо за подписку на {$this->data->get('channel_name')}");
-//    }
 
     protected function handleUnknownCommand(Stringable $text): void
     {
@@ -95,17 +86,27 @@ class Handler extends WebhookHandler
 
     protected function handleChatMessage(Stringable $text): void
     {
-//        Log::info('This is the value: ' . $this->request);
+//        // If the user provides a phone number (through a contact request)
+//        if ($this->message?->contact()) {
+//            $phone = $this->message->contact()->phoneNumber();
+//
+//            // Assuming there's a chat record for this conversation
+//            $chat = \DefStudio\Telegraph\Models\TelegraphChat::where('chat_id', $this->getChatId())->first();
+//            $chat->update(['phone' => $phone]);
+//
+//            // Inform user about successful phone number capture
+//            $this->sendMessage($this->getChatId(), "Thank you for providing your phone number!");
+//        }
+//
 
-//        app(TelegramService::class)->sendMessage('380971955120','helelo rfo serivce');
-//        $contactPhone = $this->message->contact()->phoneNumber();
-        if ($this->message?->contact()){
-            $phone = $this->message?->contact()->phoneNumber();
+        // Validate email input and trigger Trello authorization flow
+        if (filter_var($text->value(), FILTER_VALIDATE_EMAIL)) {
 
-            $chat = \DefStudio\Telegraph\Models\TelegraphChat::where('chat_id',$this->getChatId());
-            $chat->update(['phone'=>$phone]);
-
+            // Call the Trello authorization handler with the provided email
+            $this->handleTrelloAuthorization($text->value());
+        } else {
+            // Optionally handle other types of messages if needed
+            Log::info("Received non-email message: " . $text->value());
         }
-//       $this->reply($text);
     }
 }

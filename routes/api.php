@@ -18,4 +18,4 @@ use Illuminate\Support\Facades\Route;
 //    return $request->user();
 //});
 
-Route::post('/send', [\App\Http\Controllers\Telegram\TelegramController::class, 'send']);
+//Route::post('/send', [\App\Http\Controllers\Telegram\TelegramController::class, 'send']);

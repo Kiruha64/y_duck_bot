@@ -1,0 +1,14 @@
+FROM node:20.12
+
+USER root
+
+WORKDIR /home/node/project
+
+COPY ./package.json /home/node/project/package.json
+COPY ./package-lock.json /home/node/project/package-lock.json
+
+RUN npm install
+
+COPY --chown=root:root . .
+
+CMD ["node"]
