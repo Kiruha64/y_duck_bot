@@ -21,7 +21,7 @@ Route::get('/', function () {
     $accessToken = config('services.trello.access_token');
 
     // Define the callback URL where Trello will send webhook events
-    $callbackUrl = "https://b819-178-137-18-62.ngrok-free.app/api/trello/webhook"; // Make sure this is correct and publicly accessible
+    $callbackUrl = config('app.url') . '/api/trello/webhook';
 
     // The ID of the Trello board you want to monitor
     $boardId = '66fede13ecf3f0dbd7df0128';
